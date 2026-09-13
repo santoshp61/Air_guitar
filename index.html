@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>AirGuitar — Gesture Controlled Virtual Guitar</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #05060a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+    color: #f2f2f2;
+  }
+
+  #app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    background: #000;
+  }
+
+  /* Video + canvas share a mirrored "selfie view" container so drawn
+     landmarks stay perfectly aligned with the mirrored video underneath
+     without any manual coordinate flipping in JS. */
+  #mirrorStage {
+    position: absolute;
+    inset: 0;
+    transform: scaleX(-1);
+  }
+  #video, #overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  #video { background: #000; }
+  #overlay { pointer-events: none; }
+
+  #hud {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #topBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    pointer-events: auto;
+  }
+  .brand {
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.02em;
+    background: rgba(15,17,20,0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .primary-btn {
+    background: linear-gradient(135deg, #7c5cff, #5b3df0);
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(124,92,255,0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+  }
+  .primary-btn:hover { transform: translateY(-1px); }
+  .primary-btn:active { transform: translateY(0); }
+  .primary-btn:disabled { opacity: 0.6; cursor: default; transform: none; }
+  .primary-btn.large { padding: 16px 32px; font-size: 16px; }
+  .primary-btn.paused { background: linear-gradient(135deg, #ff8a5c, #e0602b); box-shadow: 0 6px 20px rgba(224,96,43,0.35); }
+  #toggleBtn { display: none; }
+
+  #chordDisplay {
+    align-self: center;
+    text-align: center;
+    pointer-events: none;
+    background: rgba(15,17,20,0.5);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 14px 34px;
+    margin-bottom: 30px;
+  }
+  .chord-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 2px;
+  }
+  #chordName {
+    display: block;
+    font-size: 42px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a78bff, #ffb020);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  #legend {
+    position: absolute;
+    top: 74px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.8);
+    pointer-events: none;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(15,17,20,0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.left { background: #a78bff; }
+  .dot.right { background: #ffb020; }
+
+  #statusMessage {
+    position: absolute;
+    bottom: 118px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: rgba(255,255,255,0.85);
+    background: rgba(15,17,20,0.6);
+    padding: 7px 16px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    white-space: nowrap;
+  }
+  #statusMessage.visible { opacity: 1; }
+
+  #startOverlay {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 28%, #1a1d2a 0%, #05060a 72%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    padding: 24px;
+  }
+  .start-card {
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    background: rgba(20,22,30,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 36px 28px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .start-card h1 { margin: 0 0 6px; font-size: 30px; }
+  .start-card .sub { margin: 0 0 18px; font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 0.02em; }
+  .start-card p.desc { color: rgba(255,255,255,0.75); line-height: 1.55; font-size: 14px; margin: 0 0 22px; text-align: left; }
+  .start-card .chip-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
+  .chip { font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 5px 10px; border-radius: 999px; color: rgba(255,255,255,0.7); }
+  .start-card .fine-print { font-size: 12px; color: rgba(255,255,255,0.4); margin: 18px 0 0; }
+  .start-error { color: #ff9d8a; font-size: 13px; margin-top: 16px; line-height: 1.4; }
+
+  @media (max-width: 600px) {
+    #chordName { font-size: 32px; }
+    #chordDisplay { padding: 10px 24px; margin-bottom: 18px; }
+    .brand { font-size: 14px; padding: 6px 12px; }
+    .primary-btn { padding: 8px 16px; font-size: 13px; }
+    #legend { top: 62px; left: 12px; }
+    .start-card { padding: 28px 20px; }
+    .start-card h1 { font-size: 24px; }
+  }
+  @media (max-height: 430px) {
+    #chordDisplay { margin-bottom: 8px; padding: 8px 20px; }
+    #chordName { font-size: 24px; }
+    #legend { top: 54px; }
+    #statusMessage { bottom: 70px; }
+  }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div id="mirrorStage">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div id="hud">
+      <div id="topBar">
+        <div class="brand">🎸 AirGuitar</div>
+        <button id="toggleBtn" class="primary-btn">Pause</button>
+      </div>
+
+      <div id="chordDisplay">
+        <span class="chord-label">Chord</span>
+        <span id="chordName">—</span>
+      </div>
+    </div>
+
+    <div id="legend">
+      <div class="legend-item"><span class="dot left"></span> Left hand — chord</div>
+      <div class="legend-item"><span class="dot right"></span> Right hand — strum</div>
+    </div>
+
+    <div id="statusMessage"></div>
+
+    <div id="startOverlay">
+      <div class="start-card">
+        <h1>🎸 AirGuitar</h1>
+        <p class="sub">gesture-controlled virtual guitar</p>
+        <p class="desc">
+          Show both hands to the camera.<br/>
+          <b>Left hand</b> — raise 1–4 fingers to pick a chord (1 = C, 2 = G, 3 = Am, 4 = F).<br/>
+          <b>Right hand</b> — sweep your index fingertip across the glowing line to strum.
+        </p>
+        <div class="chip-row">
+          <span class="chip">1 finger — C Major</span>
+          <span class="chip">2 fingers — G Major</span>
+          <span class="chip">3 fingers — A Minor</span>
+          <span class="chip">4 fingers — F Major</span>
+        </div>
+        <button id="startBtn" class="primary-btn large">Enable Camera &amp; Start</button>
+        <p class="fine-print">Requires camera + audio permission. Works best in good, even lighting with hands clearly in frame.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MediaPipe Hands solution via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // =====================================================================
+    // AirGuitar — architecture summary
+    //   1. MediaPipe Hands streams 21 landmarks per detected hand, up to
+    //      two hands, from the live camera feed.
+    //   2. We classify each detected hand as the user's Left or Right hand
+    //      (see SWAP_HANDEDNESS below — this is the one genuinely tricky
+    //      bit of a mirrored selfie-view setup).
+    //   3. Left hand -> count extended fingers -> pick a chord.
+    //      Right hand -> track index fingertip Y -> detect a fast crossing
+    //      of the virtual "string" line -> trigger a strum.
+    //   4. A strum synthesizes and plays the active chord's notes using a
+    //      Karplus-Strong plucked-string algorithm (Web Audio API only,
+    //      no samples/audio files).
+    // =====================================================================
+
+    // ---------------------------------------------------------------------
+    // DOM REFERENCES
+    // ---------------------------------------------------------------------
+    const videoEl = document.getElementById('video');
+    const canvasEl = document.getElementById('overlay');
+    const ctx = canvasEl.getContext('2d');
+    const startOverlay = document.getElementById('startOverlay');
+    const startBtn = document.getElementById('startBtn');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const chordNameEl = document.getElementById('chordName');
+    const statusEl = document.getElementById('statusMessage');
+    const startCard = document.querySelector('.start-card');
+
+    // ---------------------------------------------------------------------
+    // ADJUSTABLE SETTINGS — tune gesture sensitivity / audio feel here
+    // ---------------------------------------------------------------------
+
+    // --- Hand tracking model ---
+    const MODEL_COMPLEXITY = 1;        // 0 = lite/faster (better for older phones), 1 = fuller/more accurate
+    const MAX_NUM_HANDS = 2;
+    const MIN_DETECTION_CONFIDENCE = 0.6;
+    const MIN_TRACKING_CONFIDENCE = 0.6;
+
+    // MediaPipe's Left/Right label is computed on the RAW (non-mirrored)
+    // camera frame. We display a mirrored selfie-style view, so by default
+    // we swap the label to match what a user intuitively calls "my left
+    // hand." If chord/strum roles feel swapped on your device, flip this.
+    const SWAP_HANDEDNESS = true;
+
+    // --- Left hand: chord selection ---
+    const FINGER_UP_MARGIN = 0.02;     // normalized y-margin; higher = less sensitive to noise, slightly slower to register a raised finger
+    const CHORD_STABILITY_FRAMES = 4;  // consecutive frames the same finger-count must hold before the chord actually switches; higher = steadier display, less twitchy, but slower to respond
+    const FINGER_COUNT_TO_CHORD = { 1: 'C', 2: 'G', 3: 'Am', 4: 'F' };
+    const CHORD_NOTE_FREQS = {
+      C:  [261.63, 329.63, 392.00, 523.25], // C4 E4 G4 C5
+      G:  [196.00, 246.94, 293.66, 392.00], // G3 B3 D4 G4
+      Am: [220.00, 261.63, 329.63, 440.00], // A3 C4 E4 A4
+      F:  [174.61, 220.00, 261.63, 349.23], // F3 A3 C4 F4
+    };
+
+    // --- Right hand: strumming ---
+    const STRUM_LINE_Y = 0.55;         // normalized (0 = top, 1 = bottom) position of the virtual string across the frame
+    const STRUM_MIN_VELOCITY = 0.025;  // minimum normalized y-movement between two frames to count as a deliberate strum rather than drift/jitter — raise this if strums trigger too easily, lower it if fast strums are missed
+    const STRUM_COOLDOWN_MS = 180;     // minimum time between two strums; lower = allows faster strumming, higher = fewer accidental double-triggers
+
+    // --- Audio (Karplus-Strong plucked-string synthesis) ---
+    const NOTE_DURATION_SEC = 1.6;     // length of each synthesized pluck
+    const KS_DECAY = 0.9945;           // Karplus-Strong decay factor (0-1); closer to 1 = longer sustain, more "ringing"
+    const STRUM_GAIN = 0.22;           // per-note peak gain (x4 notes per chord) — lower this if strums sound distorted/clipped
+    const STRUM_SPREAD_SEC = 0.012;    // tiny stagger between each string's onset so a strum doesn't sound like one unnaturally perfect unison hit
+
+    // ---------------------------------------------------------------------
+    // STATE
+    // ---------------------------------------------------------------------
+    let hands = null;
+    let camera = null;
+    let audioCtx = null;
+    let masterGain = null;
+    let started = false;
+    let processingEnabled = false;
+
+    let activeChord = null;
+    let chordCandidateCount = null;
+    let chordCandidateStreak = 0;
+
+    let prevRightY = null;
+    let lastStrumTime = 0;
+    let strumFlashUntil = 0;
+
+    const noteBufferCache = new Map(); // frequency (Hz) -> pre-rendered AudioBuffer
+
+    // ---------------------------------------------------------------------
+    // AUDIO ENGINE
+    // ---------------------------------------------------------------------
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.9;
+        masterGain.connect(audioCtx.destination);
+      }
+    }
+
+    // Classic Karplus-Strong plucked-string synthesis: a short burst of
+    // white noise is fed into a circular delay line whose length sets the
+    // pitch (sampleRate / frequency). Each pass around the loop, a sample
+    // is replaced by the decayed average of itself and its neighbour —
+    // a simple low-pass filter that models the string losing energy over
+    // time, giving a natural-sounding pluck-and-decay without any sampled
+    // audio.
+    function generateKarplusStrongBuffer(frequency, duration) {
+      const sampleRate = audioCtx.sampleRate;
+      const totalSamples = Math.floor(sampleRate * duration);
+      const N = Math.max(2, Math.round(sampleRate / frequency));
+      const ring = new Float32Array(N);
+      for (let i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
+
+      const output = new Float32Array(totalSamples);
+      let idx = 0;
+      for (let i = 0; i < totalSamples; i++) {
+        const nextIdx = (idx + 1) % N;
+        const current = ring[idx];
+        const next = ring[nextIdx];
+        output[i] = current;
+        ring[idx] = KS_DECAY * 0.5 * (current + next);
+        idx = nextIdx;
+      }
+
+      const buffer = audioCtx.createBuffer(1, totalSamples, sampleRate);
+      buffer.copyToChannel(output, 0);
+      return buffer;
+    }
+
+    function getNoteBuffer(frequency) {
+      if (!noteBufferCache.has(frequency)) {
+        noteBufferCache.set(frequency, generateKarplusStrongBuffer(frequency, NOTE_DURATION_SEC));
+      }
+      return noteBufferCache.get(frequency);
+    }
+
+    // Pre-computing every note used by every chord right after the
+    // AudioContext exists means the very first strum has zero synthesis
+    // lag (buffer generation is cheap, but this avoids even that).
+    function prewarmNoteBuffers() {
+      const allFreqs = new Set();
+      Object.values(CHORD_NOTE_FREQS).forEach((freqs) => freqs.forEach((f) => allFreqs.add(f)));
+      allFreqs.forEach((f) => getNoteBuffer(f));
+    }
+
+    function playNote(frequency, delaySec) {
+      const buffer = getNoteBuffer(frequency);
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+
+      // Envelope layered on top of the buffer's own natural decay: a very
+      // fast linear attack avoids a click at note-on, and an exponential
+      // ramp tapers the tail smoothly to (near) silence.
+      const gainNode = audioCtx.createGain();
+      const startAt = audioCtx.currentTime + delaySec;
+      gainNode.gain.setValueAtTime(0, startAt);
+      gainNode.gain.linearRampToValueAtTime(STRUM_GAIN, startAt + 0.006);
+      gainNode.gain.exponentialRampToValueAtTime(0.0008, startAt + NOTE_DURATION_SEC);
+
+      // Gentle low-pass to soften the rawest high end of the noise burst —
+      // makes the pluck sound warmer, less "hissy."
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 5200;
+
+      source.connect(filter).connect(gainNode).connect(masterGain);
+      source.start(startAt);
+      source.stop(startAt + NOTE_DURATION_SEC + 0.05);
+    }
+
+    function playChord(chordName) {
+      const freqs = CHORD_NOTE_FREQS[chordName];
+      if (!freqs) return;
+      freqs.forEach((freq, i) => playNote(freq, i * STRUM_SPREAD_SEC));
+    }
+
+    // ---------------------------------------------------------------------
+    // HAND GESTURE LOGIC
+    // ---------------------------------------------------------------------
+
+    // Landmark indices: TIP is above (smaller y than) PIP when a finger is
+    // extended, since image-space y grows downward. Thumb is intentionally
+    // excluded — it bends sideways rather than vertically, so this simple
+    // vertical check doesn't work well for it, and the brief's 1-4 mapping
+    // doesn't need it anyway.
+    function countExtendedFingers(landmarks) {
+      const tips = [8, 12, 16, 20];
+      const pips = [6, 10, 14, 18];
+      let count = 0;
+      for (let i = 0; i < tips.length; i++) {
+        if (landmarks[tips[i]].y < landmarks[pips[i]].y - FINGER_UP_MARGIN) count++;
+      }
+      return count;
+    }
+
+    function chordLabel(chord) {
+      return { C: 'C Major', G: 'G Major', Am: 'A Minor', F: 'F Major' }[chord] || chord;
+    }
+
+    function updateChordFromFingerCount(count) {
+      if (count === chordCandidateCount) {
+        chordCandidateStreak++;
+      } else {
+        chordCandidateCount = count;
+        chordCandidateStreak = 1;
+      }
+      if (chordCandidateStreak >= CHORD_STABILITY_FRAMES) {
+        const chord = FINGER_COUNT_TO_CHORD[count] || null;
+        if (chord !== activeChord) {
+          activeChord = chord;
+          chordNameEl.textContent = activeChord ? chordLabel(activeChord) : '—';
+        }
+      }
+    }
+
+    function checkStrum(currentY) {
+      const now = performance.now();
+      if (prevRightY !== null) {
+        const crossedDown = prevRightY < STRUM_LINE_Y && currentY >= STRUM_LINE_Y;
+        const crossedUp = prevRightY > STRUM_LINE_Y && currentY <= STRUM_LINE_Y;
+        const velocity = Math.abs(currentY - prevRightY);
+        if ((crossedDown || crossedUp) && velocity >= STRUM_MIN_VELOCITY && (now - lastStrumTime) > STRUM_COOLDOWN_MS) {
+          triggerStrum();
+          lastStrumTime = now;
+        }
+      }
+      prevRightY = currentY;
+    }
+
+    function triggerStrum() {
+      strumFlashUntil = performance.now() + 220;
+      if (activeChord) {
+        playChord(activeChord);
+      } else {
+        showStatus('Raise 1-4 fingers on your left hand to pick a chord first');
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // DRAWING
+    // ---------------------------------------------------------------------
+    function drawStrumLine(w, h) {
+      const y = STRUM_LINE_Y * h;
+      const now = performance.now();
+      const flashProgress = Math.max(0, (strumFlashUntil - now) / 220); // 1 -> 0 just after a strum
+      const alpha = 0.12 + flashProgress * 0.55;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,176,32,${alpha})`;
+      ctx.lineWidth = 3 + flashProgress * 9;
+      ctx.shadowColor = 'rgba(255,176,32,0.9)';
+      ctx.shadowBlur = flashProgress * 28;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function onResults(results) {
+      const w = canvasEl.width;
+      const h = canvasEl.height;
+      if (!w || !h) return;
+
+      ctx.save();
+      ctx.clearRect(0, 0, w, h);
+      drawStrumLine(w, h);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length && results.multiHandedness) {
+        let sawLeft = false;
+        let sawRight = false;
+
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const landmarks = results.multiHandLandmarks[i];
+          const mpLabel = results.multiHandedness[i].label; // 'Left' | 'Right' per MediaPipe's raw-frame convention
+          const userHand = SWAP_HANDEDNESS ? (mpLabel === 'Left' ? 'Right' : 'Left') : mpLabel;
+          const color = userHand === 'Left' ? '#a78bff' : '#ffb020';
+
+          if (window.drawConnectors && window.HAND_CONNECTIONS) {
+            window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,0.5)', lineWidth: 2 });
+          }
+          if (window.drawLandmarks) {
+            window.drawLandmarks(ctx, landmarks, { color, radius: 3, lineWidth: 1 });
+          }
+
+          if (userHand === 'Left') {
+            sawLeft = true;
+            updateChordFromFingerCount(countExtendedFingers(landmarks));
+          } else {
+            sawRight = true;
+            checkStrum(landmarks[8].y);
+          }
+        }
+
+        if (!sawLeft) { chordCandidateCount = null; chordCandidateStreak = 0; }
+        if (!sawRight) { prevRightY = null; }
+
+        hideStatus();
+      } else {
+        prevRightY = null;
+        showStatus('Show your hands to the camera');
+      }
+
+      ctx.restore();
+    }
+
+    // ---------------------------------------------------------------------
+    // STATUS MESSAGE (transient toast)
+    // ---------------------------------------------------------------------
+    let statusTimeout = null;
+    function showStatus(msg) {
+      statusEl.textContent = msg;
+      statusEl.classList.add('visible');
+      clearTimeout(statusTimeout);
+      statusTimeout = setTimeout(hideStatus, 2200);
+    }
+    function hideStatus() {
+      statusEl.classList.remove('visible');
+    }
+
+    // ---------------------------------------------------------------------
+    // MEDIAPIPE SETUP
+    // ---------------------------------------------------------------------
+    function setupHands() {
+      hands = new window.Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      });
+      hands.setOptions({
+        maxNumHands: MAX_NUM_HANDS,
+        modelComplexity: MODEL_COMPLEXITY,
+        minDetectionConfidence: MIN_DETECTION_CONFIDENCE,
+        minTrackingConfidence: MIN_TRACKING_CONFIDENCE,
+      });
+      hands.onResults(onResults);
+    }
+
+    function resizeCanvasToVideo() {
+      canvasEl.width = videoEl.videoWidth || 640;
+      canvasEl.height = videoEl.videoHeight || 480;
+    }
+
+    // ---------------------------------------------------------------------
+    // START / PAUSE
+    // ---------------------------------------------------------------------
+    async function handleStart() {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Starting…';
+      clearStartError();
+
+      try {
+        if (!window.Hands || !window.Camera) {
+          throw Object.assign(new Error('MediaPipe library failed to load'), { name: 'MediaPipeLoadError' });
+        }
+
+        ensureAudioContext();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        prewarmNoteBuffers();
+
+        setupHands();
+        videoEl.addEventListener('loadedmetadata', resizeCanvasToVideo, { once: true });
+
+        camera = new window.Camera(videoEl, {
+          onFrame: async () => {
+            if (processingEnabled) {
+              await hands.send({ image: videoEl });
+            }
+          },
+          width: 640,
+          height: 480,
+          facingMode: 'user',
+        });
+        await camera.start();
+
+        processingEnabled = true;
+        started = true;
+        startOverlay.style.display = 'none';
+        toggleBtn.style.display = 'inline-block';
+        toggleBtn.textContent = 'Pause';
+        toggleBtn.classList.remove('paused');
+      } catch (err) {
+        console.error('AirGuitar start failed:', err);
+        startBtn.disabled = false;
+        startBtn.textContent = 'Enable Camera & Start';
+        showStartError(err);
+      }
+    }
+
+    function clearStartError() {
+      const existing = startCard.querySelector('.start-error');
+      if (existing) existing.remove();
+    }
+
+    function showStartError(err) {
+      let msg = 'Something went wrong starting the camera. Please reload and try again.';
+      if (err && err.name === 'NotAllowedError') {
+        msg = 'Camera permission was denied. Allow camera access in your browser settings and try again.';
+      } else if (err && err.name === 'NotFoundError') {
+        msg = 'No camera was found on this device.';
+      } else if (err && err.name === 'MediaPipeLoadError') {
+        msg = 'Could not load the hand-tracking library from the CDN. Check your internet connection and reload.';
+      } else if (location.protocol === 'file:') {
+        msg = 'Browsers block camera access when a page is opened directly from disk (file://). Serve this file over http(s) — e.g. run "python3 -m http.server" in this folder and open it via http://localhost — then try again.';
+      }
+      clearStartError();
+      const p = document.createElement('p');
+      p.className = 'start-error';
+      p.textContent = msg;
+      startCard.appendChild(p);
+    }
+
+    function handleToggle() {
+      if (!started) return;
+      if (processingEnabled) {
+        processingEnabled = false;
+        if (audioCtx) audioCtx.suspend();
+        toggleBtn.textContent = 'Resume';
+        toggleBtn.classList.add('paused');
+        prevRightY = null;
+        chordCandidateCount = null;
+        chordCandidateStreak = 0;
+      } else {
+        processingEnabled = true;
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        toggleBtn.textContent = 'Pause';
+        toggleBtn.classList.remove('paused');
+      }
+    }
+
+    startBtn.addEventListener('click', handleStart);
+    toggleBtn.addEventListener('click', handleToggle);
+  })();
+  </script>
+</body>
+</html>

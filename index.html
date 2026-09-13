@@ -1,695 +1,593 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>AirGuitar — Gesture Controlled Virtual Guitar</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Interactive Git for Windows release notes">
+<title>Git for Windows v2.55.0(3) Release Notes — Interactive</title>
 <style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    margin: 0; padding: 0; width: 100%; height: 100%;
-    background: #05060a;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    overflow: hidden;
-    color: #f2f2f2;
-  }
-
-  #app {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
-    background: #000;
-  }
-
-  /* Video + canvas share a mirrored "selfie view" container so drawn
-     landmarks stay perfectly aligned with the mirrored video underneath
-     without any manual coordinate flipping in JS. */
-  #mirrorStage {
-    position: absolute;
-    inset: 0;
-    transform: scaleX(-1);
-  }
-  #video, #overlay {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    object-fit: cover;
-  }
-  #video { background: #000; }
-  #overlay { pointer-events: none; }
-
-  #hud {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    pointer-events: none;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  #topBar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    pointer-events: auto;
-  }
-  .brand {
-    font-weight: 700;
-    font-size: 18px;
-    letter-spacing: 0.02em;
-    background: rgba(15,17,20,0.55);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    padding: 8px 14px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.08);
-  }
-
-  .primary-btn {
-    background: linear-gradient(135deg, #7c5cff, #5b3df0);
-    color: #fff;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 999px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 6px 20px rgba(124,92,255,0.35);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
-  }
-  .primary-btn:hover { transform: translateY(-1px); }
-  .primary-btn:active { transform: translateY(0); }
-  .primary-btn:disabled { opacity: 0.6; cursor: default; transform: none; }
-  .primary-btn.large { padding: 16px 32px; font-size: 16px; }
-  .primary-btn.paused { background: linear-gradient(135deg, #ff8a5c, #e0602b); box-shadow: 0 6px 20px rgba(224,96,43,0.35); }
-  #toggleBtn { display: none; }
-
-  #chordDisplay {
-    align-self: center;
-    text-align: center;
-    pointer-events: none;
-    background: rgba(15,17,20,0.5);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 24px;
-    padding: 14px 34px;
-    margin-bottom: 30px;
-  }
-  .chord-label {
-    display: block;
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.5);
-    margin-bottom: 2px;
-  }
-  #chordName {
-    display: block;
-    font-size: 42px;
-    font-weight: 800;
-    background: linear-gradient(135deg, #a78bff, #ffb020);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  #legend {
-    position: absolute;
-    top: 74px;
-    left: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 12px;
-    color: rgba(255,255,255,0.8);
-    pointer-events: none;
-  }
-  .legend-item {
-    display: flex; align-items: center; gap: 6px;
-    background: rgba(15,17,20,0.45);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 5px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.06);
-  }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
-  .dot.left { background: #a78bff; }
-  .dot.right { background: #ffb020; }
-
-  #statusMessage {
-    position: absolute;
-    bottom: 118px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 13px;
-    color: rgba(255,255,255,0.85);
-    background: rgba(15,17,20,0.6);
-    padding: 7px 16px;
-    border-radius: 999px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    white-space: nowrap;
-  }
-  #statusMessage.visible { opacity: 1; }
-
-  #startOverlay {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at 50% 28%, #1a1d2a 0%, #05060a 72%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    padding: 24px;
-  }
-  .start-card {
-    max-width: 440px;
-    width: 100%;
-    text-align: center;
-    background: rgba(20,22,30,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 20px;
-    padding: 36px 28px;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-  }
-  .start-card h1 { margin: 0 0 6px; font-size: 30px; }
-  .start-card .sub { margin: 0 0 18px; font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 0.02em; }
-  .start-card p.desc { color: rgba(255,255,255,0.75); line-height: 1.55; font-size: 14px; margin: 0 0 22px; text-align: left; }
-  .start-card .chip-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 22px; flex-wrap: wrap; }
-  .chip { font-size: 11px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 5px 10px; border-radius: 999px; color: rgba(255,255,255,0.7); }
-  .start-card .fine-print { font-size: 12px; color: rgba(255,255,255,0.4); margin: 18px 0 0; }
-  .start-error { color: #ff9d8a; font-size: 13px; margin-top: 16px; line-height: 1.4; }
-
-  @media (max-width: 600px) {
-    #chordName { font-size: 32px; }
-    #chordDisplay { padding: 10px 24px; margin-bottom: 18px; }
-    .brand { font-size: 14px; padding: 6px 12px; }
-    .primary-btn { padding: 8px 16px; font-size: 13px; }
-    #legend { top: 62px; left: 12px; }
-    .start-card { padding: 28px 20px; }
-    .start-card h1 { font-size: 24px; }
-  }
-  @media (max-height: 430px) {
-    #chordDisplay { margin-bottom: 8px; padding: 8px 20px; }
-    #chordName { font-size: 24px; }
-    #legend { top: 54px; }
-    #statusMessage { bottom: 70px; }
-  }
+:root {
+  --bg:#0b1020; --panel:#11182b; --panel2:#17213a; --text:#eaf0ff; --muted:#9eabc7;
+  --accent:#58a6ff; --accent2:#7ee787; --border:#26324d; --danger:#ff7b72;
+  --shadow:0 18px 50px rgba(0,0,0,.28);
+}
+[data-theme="light"] {
+  --bg:#f5f7fb; --panel:#fff; --panel2:#eef3fa; --text:#182033; --muted:#63708a;
+  --accent:#0969da; --accent2:#1a7f37; --border:#d8e0ec; --shadow:0 14px 35px rgba(30,50,80,.12);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button,input{font:inherit}
+button{cursor:pointer}
+.app{min-height:100vh}
+.topbar{
+  position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:14px;
+  padding:12px 18px;background:color-mix(in srgb,var(--panel) 90%,transparent);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--border)
+}
+.logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--accent);color:white;font-weight:900}
+.brand{font-weight:800;white-space:nowrap}
+.search{flex:1;max-width:680px;margin:auto;position:relative}
+.search input{
+  width:100%;padding:11px 42px 11px 15px;border:1px solid var(--border);border-radius:12px;
+  background:var(--panel2);color:var(--text);outline:none
+}
+.search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+.kbd{position:absolute;right:10px;top:8px;padding:2px 7px;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px}
+.icon-btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:10px;padding:9px 11px}
+.layout{display:grid;grid-template-columns:260px minmax(0,1fr) 260px;gap:22px;max-width:1500px;margin:auto;padding:24px}
+.sidebar,.rightbar{position:sticky;top:82px;align-self:start;max-height:calc(100vh - 105px);overflow:auto}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.sidebar .card,.rightbar .card{padding:16px}
+.nav-title{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:800;margin-bottom:9px}
+.toc a{display:block;padding:7px 9px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13px}
+.toc a:hover,.toc a.active{background:var(--panel2);color:var(--text)}
+.main{min-width:0}
+.hero{padding:30px;border-radius:20px;background:linear-gradient(135deg,var(--panel),var(--panel2));border:1px solid var(--border);margin-bottom:18px}
+.hero h1{font-size:clamp(28px,4vw,44px);line-height:1.1;margin:0 0 10px}
+.hero p{margin:7px 0;color:var(--muted)}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.badge{padding:5px 10px;border:1px solid var(--border);background:var(--panel);border-radius:999px;font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+.stat{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+.stat b{display:block;font-size:21px}
+.stat span{color:var(--muted);font-size:12px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px;margin-bottom:16px}
+.toolbar button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:9px;padding:8px 11px}
+.toolbar button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.content{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:30px}
+.content h1{font-size:32px;margin-top:0}
+.content h2{
+  margin-top:38px;padding:15px 16px;border:1px solid var(--border);border-radius:13px;
+  background:var(--panel2);scroll-margin-top:90px;position:relative
+}
+.content h2::after{content:"↗";float:right;color:var(--muted);font-size:14px}
+.content h3{margin-top:25px;color:var(--accent2)}
+.content li{margin:8px 0}
+.content code{background:var(--panel2);border:1px solid var(--border);padding:2px 5px;border-radius:5px}
+.content pre{overflow:auto;background:#080c16;color:#d9e2f2;padding:15px;border-radius:10px}
+.content a{color:var(--accent)}
+.version-card{padding:13px;margin:8px 0;border:1px solid var(--border);border-radius:11px;background:var(--panel2)}
+.version-card small{color:var(--muted)}
+.progress-wrap{height:7px;background:var(--panel2);border-radius:999px;overflow:hidden;margin:10px 0}
+.progress{height:100%;width:0;background:var(--accent);transition:width .2s}
+.tip{color:var(--muted);font-size:13px}
+.empty{display:none;text-align:center;padding:35px;color:var(--muted)}
+.backtop{position:fixed;right:22px;bottom:22px;opacity:0;pointer-events:none;transition:.2s}
+.backtop.show{opacity:1;pointer-events:auto}
+mark{background:#f2cc60;color:#17120a;border-radius:3px;padding:0 2px}
+@media(max-width:1100px){.layout{grid-template-columns:220px minmax(0,1fr)}.rightbar{display:none}}
+@media(max-width:760px){
+  .topbar{flex-wrap:wrap}.brand{display:none}.search{order:3;flex-basis:100%}
+  .layout{display:block;padding:12px}.sidebar{display:none}.content{padding:19px}
+  .stats{grid-template-columns:repeat(2,1fr)}.hero{padding:22px}
+}
+@media print{
+  .topbar,.sidebar,.rightbar,.toolbar,.backtop{display:none!important}
+  .layout{display:block;padding:0}.content,.hero{box-shadow:none;border:0}
+  body{background:white;color:black}
+}
 </style>
 </head>
 <body>
-  <div id="app">
-    <div id="mirrorStage">
-      <video id="video" playsinline autoplay muted></video>
-      <canvas id="overlay"></canvas>
-    </div>
-
-    <div id="hud">
-      <div id="topBar">
-        <div class="brand">🎸 AirGuitar</div>
-        <button id="toggleBtn" class="primary-btn">Pause</button>
-      </div>
-
-      <div id="chordDisplay">
-        <span class="chord-label">Chord</span>
-        <span id="chordName">—</span>
-      </div>
-    </div>
-
-    <div id="legend">
-      <div class="legend-item"><span class="dot left"></span> Left hand — chord</div>
-      <div class="legend-item"><span class="dot right"></span> Right hand — strum</div>
-    </div>
-
-    <div id="statusMessage"></div>
-
-    <div id="startOverlay">
-      <div class="start-card">
-        <h1>🎸 AirGuitar</h1>
-        <p class="sub">gesture-controlled virtual guitar</p>
-        <p class="desc">
-          Show both hands to the camera.<br/>
-          <b>Left hand</b> — raise 1–4 fingers to pick a chord (1 = C, 2 = G, 3 = Am, 4 = F).<br/>
-          <b>Right hand</b> — sweep your index fingertip across the glowing line to strum.
-        </p>
-        <div class="chip-row">
-          <span class="chip">1 finger — C Major</span>
-          <span class="chip">2 fingers — G Major</span>
-          <span class="chip">3 fingers — A Minor</span>
-          <span class="chip">4 fingers — F Major</span>
-        </div>
-        <button id="startBtn" class="primary-btn large">Enable Camera &amp; Start</button>
-        <p class="fine-print">Requires camera + audio permission. Works best in good, even lighting with hands clearly in frame.</p>
-      </div>
-    </div>
+<div class="app">
+<header class="topbar">
+  <div class="logo">G</div>
+  <div class="brand">Git for Windows</div>
+  <div class="search">
+    <input id="search" type="search" placeholder="Search release notes… (Ctrl/Cmd + K)" aria-label="Search release notes">
+    <span class="kbd">Ctrl K</span>
   </div>
+  <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">☾</button>
+  <button class="icon-btn" id="printBtn" title="Print release notes" aria-label="Print">⎙</button>
+</header>
 
-  <!-- MediaPipe Hands solution via CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="card">
+      <div class="nav-title">Versions</div>
+      <nav class="toc" id="toc"></nav>
+    </div>
+  </aside>
 
-  <script>
-  (() => {
-    'use strict';
+  <main class="main">
+    <section class="hero">
+      <h1>Git for Windows v2.55.0(3) Release Notes</h1>
+      <p>Interactive release notes with fast search, version navigation, filters, progress tracking and theme support.</p>
+      <div class="badges">
+        <span class="badge">July 14, 2026</span>
+        <span class="badge">Git for Windows</span>
+        <span class="badge">Interactive edition</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="versionCount">—</b><span>versions shown</span></div>
+        <div class="stat"><b id="featureCount">—</b><span>new features</span></div>
+        <div class="stat"><b id="fixCount">—</b><span>bug-fix entries</span></div>
+        <div class="stat"><b id="readCount">0%</b><span>page reviewed</span></div>
+      </div>
+    </section>
 
-    // =====================================================================
-    // AirGuitar — architecture summary
-    //   1. MediaPipe Hands streams 21 landmarks per detected hand, up to
-    //      two hands, from the live camera feed.
-    //   2. We classify each detected hand as the user's Left or Right hand
-    //      (see SWAP_HANDEDNESS below — this is the one genuinely tricky
-    //      bit of a mirrored selfie-view setup).
-    //   3. Left hand -> count extended fingers -> pick a chord.
-    //      Right hand -> track index fingertip Y -> detect a fast crossing
-    //      of the virtual "string" line -> trigger a strum.
-    //   4. A strum synthesizes and plays the active chord's notes using a
-    //      Karplus-Strong plucked-string algorithm (Web Audio API only,
-    //      no samples/audio files).
-    // =====================================================================
+    <div class="card toolbar" id="toolbar">
+      <button class="active" data-filter="all">All</button>
+      <button data-filter="features">✨ New Features</button>
+      <button data-filter="fixes">🛠 Bug Fixes</button>
+      <button id="expandBtn">Expand all</button>
+      <button id="collapseBtn">Collapse all</button>
+    </div>
 
-    // ---------------------------------------------------------------------
-    // DOM REFERENCES
-    // ---------------------------------------------------------------------
-    const videoEl = document.getElementById('video');
-    const canvasEl = document.getElementById('overlay');
-    const ctx = canvasEl.getContext('2d');
-    const startOverlay = document.getElementById('startOverlay');
-    const startBtn = document.getElementById('startBtn');
-    const toggleBtn = document.getElementById('toggleBtn');
-    const chordNameEl = document.getElementById('chordName');
-    const statusEl = document.getElementById('statusMessage');
-    const startCard = document.querySelector('.start-card');
+    <div class="content" id="content">
+      <!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;
+charset=UTF-8">
 
-    // ---------------------------------------------------------------------
-    // ADJUSTABLE SETTINGS — tune gesture sensitivity / audio feel here
-    // ---------------------------------------------------------------------
+</head>
+<body class="details">
+<div class="links">
+<ul>
+<li><a href="https://gitforwindows.org/">homepage</a></li>
+<li><a href="https://gitforwindows.org/faq">faq</a></li>
+<li><a href="https://gitforwindows.org/#contribute">contribute</a></li>
+<li><a href="https://gitforwindows.org/#contribute">bugs</a></li>
+<li><a href="mailto:git@vger.kernel.org">questions</a></li>
+</ul>
+<div id="git-for-windows-logo">
+<div id="left-pane"></div>
+<div id="top-pane"></div>
+<div id="right-pane"></div>
+<div id="bottom-pane"></div>
+<div id="diagonal-pipe"></div>
+<div id="vertical-pipe"></div>
+<div id="top-ball"></div>
+<div id="bottom-ball"></div>
+<div id="right-ball"></div>
+</div>
+</div>
+<div class="content">
+<h1>Git for Windows v2.55.0(3) Release Notes</h1>
 
-    // --- Hand tracking model ---
-    const MODEL_COMPLEXITY = 1;        // 0 = lite/faster (better for older phones), 1 = fuller/more accurate
-    const MAX_NUM_HANDS = 2;
-    const MIN_DETECTION_CONFIDENCE = 0.6;
-    const MIN_TRACKING_CONFIDENCE = 0.6;
+<p>Latest update: July 14th 2026</p>
 
-    // MediaPipe's Left/Right label is computed on the RAW (non-mirrored)
-    // camera frame. We display a mirrored selfie-style view, so by default
-    // we swap the label to match what a user intuitively calls "my left
-    // hand." If chord/strum roles feel swapped on your device, flip this.
-    const SWAP_HANDEDNESS = true;
+<h2>Introduction</h2>
 
-    // --- Left hand: chord selection ---
-    const FINGER_UP_MARGIN = 0.02;     // normalized y-margin; higher = less sensitive to noise, slightly slower to register a raised finger
-    const CHORD_STABILITY_FRAMES = 4;  // consecutive frames the same finger-count must hold before the chord actually switches; higher = steadier display, less twitchy, but slower to respond
-    const FINGER_COUNT_TO_CHORD = { 1: 'C', 2: 'G', 3: 'Am', 4: 'F' };
-    const CHORD_NOTE_FREQS = {
-      C:  [261.63, 329.63, 392.00, 523.25], // C4 E4 G4 C5
-      G:  [196.00, 246.94, 293.66, 392.00], // G3 B3 D4 G4
-      Am: [220.00, 261.63, 329.63, 440.00], // A3 C4 E4 A4
-      F:  [174.61, 220.00, 261.63, 349.23], // F3 A3 C4 F4
-    };
+<p>These release notes describe issues specific to the Git for Windows release. The release notes covering the history of the core git commands can be found <a href="https://github.com/git/git/tree/HEAD/Documentation/RelNotes">in the Git project</a>.</p>
 
-    // --- Right hand: strumming ---
-    const STRUM_LINE_Y = 0.55;         // normalized (0 = top, 1 = bottom) position of the virtual string across the frame
-    const STRUM_MIN_VELOCITY = 0.025;  // minimum normalized y-movement between two frames to count as a deliberate strum rather than drift/jitter — raise this if strums trigger too easily, lower it if fast strums are missed
-    const STRUM_COOLDOWN_MS = 180;     // minimum time between two strums; lower = allows faster strumming, higher = fewer accidental double-triggers
+<p>See <a href="http://git-scm.com/">http://git-scm.com/</a> for further details about Git including ports to other operating systems. Git for Windows is hosted at <a href="https://gitforwindows.org/">https://gitforwindows.org/</a>.</p>
 
-    // --- Audio (Karplus-Strong plucked-string synthesis) ---
-    const NOTE_DURATION_SEC = 1.6;     // length of each synthesized pluck
-    const KS_DECAY = 0.9945;           // Karplus-Strong decay factor (0-1); closer to 1 = longer sustain, more "ringing"
-    const STRUM_GAIN = 0.22;           // per-note peak gain (x4 notes per chord) — lower this if strums sound distorted/clipped
-    const STRUM_SPREAD_SEC = 0.012;    // tiny stagger between each string's onset so a strum doesn't sound like one unnaturally perfect unison hit
+<h1 id="known-issues" class="collapsible">Known issues</h1>
 
-    // ---------------------------------------------------------------------
-    // STATE
-    // ---------------------------------------------------------------------
-    let hands = null;
-    let camera = null;
-    let audioCtx = null;
-    let masterGain = null;
-    let started = false;
-    let processingEnabled = false;
+<ul>
+<li>On Windows 10 before 1703, or when Developer Mode is turned off, special permissions are required when cloning repositories with symbolic links, therefore support for symbolic links is disabled by default. Use <code>git clone -c core.symlinks=true &lt;URL&gt;</code> to enable it, see details <a href="https://gitforwindows.org/symbolic-links">here</a>.</li>
+<li>If configured to use Plink, you will have to connect with <a href="http://www.chiark.greenend.org.uk/~sgtatham/putty/">putty</a> first and accept the host key.</li>
+<li><p>If you specify command-line options starting with a slash, POSIX-to-Windows path conversion will kick in converting e.g. "<code>/usr/bin/bash.exe</code>" to "<code>C:\Program Files\Git\usr\bin\bash.exe</code>". When that is not desired -- e.g. "<code>--upload-pack=/opt/git/bin/git-upload-pack</code>" or "<code>-L/regex/</code>" -- you need to set the environment variable <code>MSYS_NO_PATHCONV</code> temporarily, like so:</p>
 
-    let activeChord = null;
-    let chordCandidateCount = null;
-    let chordCandidateStreak = 0;
+<blockquote>
+  <p><code>MSYS_NO_PATHCONV=1 git blame -L/pathconv/ msys2_path_conv.cc</code></p>
+</blockquote>
 
-    let prevRightY = null;
-    let lastStrumTime = 0;
-    let strumFlashUntil = 0;
+<p>Alternatively, you can double the first slash to avoid POSIX-to-Windows path conversion, e.g. "<code>//usr/bin/bash.exe</code>".</p></li>
+<li>Windows drives are normally recognized within the POSIX path as <code>/c/path/to/dir/</code> where <code>/c/</code> (or appropriate drive letter) is equivalent to the <code>C:\</code> Windows prefix to the <code>\path\to\dir</code>. If this is not recognized, revert to the <code>C:\path\to\dir</code> Windows style.</li>
+<li>Git for Windows will not allow commits containing DOS-style truncated 8.3-format filenames ending with a tilde and digit, such as <code>mydocu~1.txt</code>. A workaround is to call <code>git config core.protectNTFS false</code>, which is not advised. Instead, add a rule to .gitignore to ignore the file(s), or rename the file(s).</li>
+<li>Many Windows programs (including the Windows Explorer) have problems with directory trees nested so deeply that the absolute path is longer than 260 characters. Therefore, Git for Windows refuses to check out such files by default. You can overrule this default by setting <code>core.longPaths</code>, e.g. <code>git clone -c core.longPaths=true ...</code>.</li>
+<li>Some commands are not yet supported on Windows and excluded from the installation.</li>
+<li>As Git for Windows is shipped without Python support, <code>git p4</code> (which is backed by a Python script) is not supported.</li>
+<li>The Quick Launch icon will only be installed for the user running setup (typically the Administrator). This is a technical restriction and will not change.</li>
+<li>Git command hints are designed for a POSIX shell, this can lead to issues when using them <strong>as is</strong> in non-POSIX shells like PowerShell, <a href="https://github.com/git-for-windows/git/issues/2785">as is the case in this ticket</a>.</li>
+<li>When pushing via the <code>git://</code> protocol, Git for Windows may hang indefinitely. The last console output in this case is typically <code>Writing objects: 100%</code>. As a workaround, disabling side-band via <code>git config sendpack.sideband false</code> should address this, at the cost of showing remote errors late (or not at all). No one is working on this; for more details, or to contribute a fix, see issue <a href="https://github.com/git-for-windows/git/issues/907">#907</a> (closed unless/until there is activity).</li>
+<li><p>Git for Windows executables linked to <code>msys-2.0.dll</code> are not compatible with Mandatory ASLR and may crash if system-wide Mandatory ASLR is enabled in Windows Exploit protection. A workaround is to disable ASLR for all executables in <code>C:\Program Files\Git\usr\bin</code>, run in administrator powershell (replace <code>$_.Name</code> with <code>$_</code> to use full path to executable instead of name):</p>
 
-    const noteBufferCache = new Map(); // frequency (Hz) -> pre-rendered AudioBuffer
+<blockquote>
+  <p><code>Get-Item -Path "C:\Program Files\Git\usr\bin\*.exe" | %{ Set-ProcessMitigation -Name $_.Name -Disable ForceRelocateImages }</code></p>
+</blockquote>
 
-    // ---------------------------------------------------------------------
-    // AUDIO ENGINE
-    // ---------------------------------------------------------------------
-    function ensureAudioContext() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        masterGain = audioCtx.createGain();
-        masterGain.gain.value = 0.9;
-        masterGain.connect(audioCtx.destination);
-      }
-    }
+<p>Alternatively, you can disable Mandatory ASLR completely in Windows Exploit protection.</p></li>
+</ul>
 
-    // Classic Karplus-Strong plucked-string synthesis: a short burst of
-    // white noise is fed into a circular delay line whose length sets the
-    // pitch (sampleRate / frequency). Each pass around the loop, a sample
-    // is replaced by the decayed average of itself and its neighbour —
-    // a simple low-pass filter that models the string losing energy over
-    // time, giving a natural-sounding pluck-and-decay without any sampled
-    // audio.
-    function generateKarplusStrongBuffer(frequency, duration) {
-      const sampleRate = audioCtx.sampleRate;
-      const totalSamples = Math.floor(sampleRate * duration);
-      const N = Math.max(2, Math.round(sampleRate / frequency));
-      const ring = new Float32Array(N);
-      for (let i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
+<p>Should you encounter other problems, please first search <a href="https://github.com/git-for-windows/git/issues">the bug tracker</a> (also look at the closed issues) and <a href="https://groups.google.com/group/git-for-windows">the mailing list</a>, chances are that the problem was reported already. Also make sure that you use an up to date Git for Windows version (or a <a href="https://gitforwindows.org/git-snapshots/">current snapshot build</a>). If it has not been reported yet, please follow <a href="https://gitforwindows.org/issue-reporting-guidelines">our bug reporting guidelines</a> and <a href="https://github.com/git-for-windows/git/issues/new">report the bug</a>.</p>
 
-      const output = new Float32Array(totalSamples);
-      let idx = 0;
-      for (let i = 0; i < totalSamples; i++) {
-        const nextIdx = (idx + 1) % N;
-        const current = ring[idx];
-        const next = ring[nextIdx];
-        output[i] = current;
-        ring[idx] = KS_DECAY * 0.5 * (current + next);
-        idx = nextIdx;
-      }
+<h2 id="licenses" data-version="licenses" class="collapsible">Licenses</h2><div>
 
-      const buffer = audioCtx.createBuffer(1, totalSamples, sampleRate);
-      buffer.copyToChannel(output, 0);
-      return buffer;
-    }
+<p>Git is licensed under the GNU General Public License version 2.</p>
 
-    function getNoteBuffer(frequency) {
-      if (!noteBufferCache.has(frequency)) {
-        noteBufferCache.set(frequency, generateKarplusStrongBuffer(frequency, NOTE_DURATION_SEC));
-      }
-      return noteBufferCache.get(frequency);
-    }
+<p>Git for Windows is distributed with other components yet, such as Bash, zlib, curl, tcl/tk, perl, MSYS2. Each of these components is governed by their respective license.</p>
 
-    // Pre-computing every note used by every chord right after the
-    // AudioContext exists means the very first strum has zero synthesis
-    // lag (buffer generation is cheap, but this avoids even that).
-    function prewarmNoteBuffers() {
-      const allFreqs = new Set();
-      Object.values(CHORD_NOTE_FREQS).forEach((freqs) => freqs.forEach((f) => allFreqs.add(f)));
-      allFreqs.forEach((f) => getNoteBuffer(f));
-    }
+</div><h2 id="v2.55.0(3)" data-version="v2.55.0(3)" nr="1" class="collapsible"> <a name="latest">Changes in v2.55.0(3)</a><br /><small>since  v2.55.0(2) (July 2nd 2026)</h2></small><div>
 
-    function playNote(frequency, delaySec) {
-      const buffer = getNoteBuffer(frequency);
-      const source = audioCtx.createBufferSource();
-      source.buffer = buffer;
+<h3 class="section-heading new-features">New Features</h3>
 
-      // Envelope layered on top of the buffer's own natural decay: a very
-      // fast linear attack avoids a click at note-on, and an exponential
-      // ramp tapers the tail smoothly to (near) silence.
-      const gainNode = audioCtx.createGain();
-      const startAt = audioCtx.currentTime + delaySec;
-      gainNode.gain.setValueAtTime(0, startAt);
-      gainNode.gain.linearRampToValueAtTime(STRUM_GAIN, startAt + 0.006);
-      gainNode.gain.exponentialRampToValueAtTime(0.0008, startAt + NOTE_DURATION_SEC);
+<ul>
+<li>Comes with <a href="https://github.com/git-ecosystem/git-credential-manager/releases/tag/v2.9.0">Git Credential Manager v2.9.0</a>.</li>
+</ul>
 
-      // Gentle low-pass to soften the rawest high end of the noise burst —
-      // makes the pluck sound warmer, less "hissy."
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 5200;
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
 
-      source.connect(filter).connect(gainNode).connect(masterGain);
-      source.start(startAt);
-      source.stop(startAt + NOTE_DURATION_SEC + 0.05);
-    }
+<ul>
+<li>Fixes heap overflows in the credential helper <code>wincred</code>, see <a href="https://github.com/git-for-windows/git/security/advisories/GHSA-rxqw-wxqg-g7hw">GHSA-rxqw-wxqg-g7hw</a> for full details.</li>
+</ul>
 
-    function playChord(chordName) {
-      const freqs = CHORD_NOTE_FREQS[chordName];
-      if (!freqs) return;
-      freqs.forEach((freq, i) => playNote(freq, i * STRUM_SPREAD_SEC));
-    }
+</div><h2 id="v2.55.0(2)" data-version="v2.55.0(2)" nr="2" class="collapsible"> Changes in v2.55.0(2)<br /><small>since  v2.55.0 (June 29th 2026)</h2></small><div>
 
-    // ---------------------------------------------------------------------
-    // HAND GESTURE LOGIC
-    // ---------------------------------------------------------------------
+<p>Following the <a href="https://www.msys2.org/news/#2026-02-28-dropping-support-for-windows-81">MSYS2 project</a>, on which Git for Windows is based, Windows 8.1 support will be dropped after Git for Windows v2.55.</p>
 
-    // Landmark indices: TIP is above (smaller y than) PIP when a finger is
-    // extended, since image-space y grows downward. Thumb is intentionally
-    // excluded — it bends sideways rather than vertically, so this simple
-    // vertical check doesn't work well for it, and the brief's 1-4 mapping
-    // doesn't need it anyway.
-    function countExtendedFingers(landmarks) {
-      const tips = [8, 12, 16, 20];
-      const pips = [6, 10, 14, 18];
-      let count = 0;
-      for (let i = 0; i < tips.length; i++) {
-        if (landmarks[tips[i]].y < landmarks[pips[i]].y - FINGER_UP_MARGIN) count++;
-      }
-      return count;
-    }
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
 
-    function chordLabel(chord) {
-      return { C: 'C Major', G: 'G Major', Am: 'A Minor', F: 'F Major' }[chord] || chord;
-    }
+<ul>
+<li>NTLM opt-in support, which had been <a href="https://github.com/git-for-windows/git/issues/6308">prematurely disabled</a> altogether (a glimpse into this fall when <a href="https://curl.se/dev/deprecate.html#:~:text=in%20September%202026.-,drop%20NTLM%20support,-The%20NTLM%20authentication">NTLM <em>will be</em> disabled, no opt-in possible</a>) was fixed by <a href="https://github.com/git-for-windows/MINGW-packages/pull/208">temporarily enabling optional NTLM support again</a>.</li>
+</ul>
 
-    function updateChordFromFingerCount(count) {
-      if (count === chordCandidateCount) {
-        chordCandidateStreak++;
-      } else {
-        chordCandidateCount = count;
-        chordCandidateStreak = 1;
-      }
-      if (chordCandidateStreak >= CHORD_STABILITY_FRAMES) {
-        const chord = FINGER_COUNT_TO_CHORD[count] || null;
-        if (chord !== activeChord) {
-          activeChord = chord;
-          chordNameEl.textContent = activeChord ? chordLabel(activeChord) : '—';
+</div><h2 id="v2.55.0" data-version="v2.55.0" nr="3" class="collapsible"> Changes in v2.55.0<br /><small>since  v2.54.0 (April 20th 2026)</h2></small><div>
+
+<p>Following the <a href="https://www.msys2.org/news/#2026-02-28-dropping-support-for-windows-81">MSYS2 project</a>, on which Git for Windows is based, Windows 8.1 support will be dropped after Git for Windows v2.55.</p>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.55.0/Documentation/RelNotes/2.55.0.adoc">Git v2.55.0</a>.</li>
+<li>Comes with the MSYS2 runtime (Git for Windows flavor) based on <a href="https://sourceware.org/pipermail/cygwin-announce/2026-April/012969.html">Cygwin v3.6.9</a>.</li>
+<li>Comes with <a href="https://github.com/git-ecosystem/git-credential-manager/releases/tag/v2.8.0">Git Credential Manager v2.8.0</a>.</li>
+<li>Comes with <a href="http://www.greenwoodsoftware.com/less/news.702.html">less 702</a>.</li>
+<li>The FSCache now <a href="https://github.com/git-for-windows/git/pull/6216">accelerates more <code>git add</code> scenarios</a>.</li>
+<li>Comes with <a href="https://www.openssl.org/news/openssl-3.5-notes.html">OpenSSL v3.5.7</a>.</li>
+<li>The diff helper handling Word documents was <a href="https://github.com/git-for-windows/build-extra/pull/708">ported</a> from Perl to Rust.</li>
+<li>Comes with <a href="https://cgit.git.savannah.gnu.org/cgit/bash.git/commit/?id=b460816602167718f78a6233164e8875f49b75b2">Bash v5.3.15</a>.</li>
+<li>Comes with <a href="https://curl.se/changes.html#8_21_0">cURL v8.21.0</a>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>A <a href="https://github.com/git-for-windows/git/issues/6210">regression in v2.54.0</a> that could cause endless "Unlink of file '.git/objects/pack/pack-<hash>.idx' failed. Should I try again?" loops on older Windows 10 versions during <code>git fetch</code> operations <a href="https://github.com/git-for-windows/git/pull/6215">was fixed</a>.</li>
+<li>A <a href="https://github.com/msys2/msys2-runtime/issues/338">bug</a> that prevented proper shutdown of processes launched via Git Bash under certain circumstances <a href="https://github.com/msys2/msys2-runtime/pull/339">was fixed</a>.</li>
+<li>A bug was <a href="https://github.com/git-for-windows/git/pull/6250">fixed</a> which could cause parallel checkouts to fail under certain circumstances when the FSCache is enabled.</li>
+<li>Git Bash (MinTTY) now respects screen scaling settings <a href="https://github.com/git-for-windows/git/issues/6085">under more circumstances</a>.</li>
+<li>A couple of bugs revolving around <em>very</em> large clones/packfiles/objects <a href="https://github.com/git-for-windows/git/pull/6289">were fixed</a>.</li>
+<li>Following <a href="https://groups.google.com/g/tortoisegit-announce/c/31zdmOBi4vY">TortoiseGit v2.19</a>, <code>.git</code> file validations have been tightened. As a consequence, access to remote repositories via UNC file paths needs to be allowed explicitly via the <code>safe.directory</code> configuration.</li>
+</ul>
+
+</div><h2 id="v2.54.0" data-version="v2.54.0" nr="4" class="collapsible"> Changes in v2.54.0<br /><small>since  v2.53.0(3) (April 14th 2026)</h2></small><div>
+
+<p>Due to persistent maintenance challenges, <code>git svn</code> is no longer included in Git for Windows. Users who still need this command are highly encouraged to use <a href="https://learn.microsoft.com/en-us/windows/wsl/">a Linux version of git svn via the Windows Subsystem for Linux</a> instead, or switch to a regular MSYS2 setup: install <a href="https://www.msys2.org/">MSYS2</a>, then run the following command in the MSYS2 UCRT64 Bash: <code>pacman -Sy mingw-w64-ucrt-x86_64-git-svn</code>. After that, the <code>git svn</code> command will be available in that Bash. On Windows/ARM64, you will want to use the CLANGARM64 variant instead (and install <code>mingw-w64-clang-aarch64-git-svn</code>).</p>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.54.0/Documentation/RelNotes/2.54.0.adoc">Git v2.54.0</a>.</li>
+<li>Comes with <a href="https://cgit.git.savannah.gnu.org/cgit/bash.git/commit/?id=637f5c8696a6adc9b4519f1cd74aa78492266b7f">Bash v5.3.9</a>.</li>
+<li>Comes with <a href="https://github.com/git-ecosystem/git-credential-manager/releases/tag/v2.7.3">Git Credential Manager v2.7.3</a>.</li>
+<li>Comes with <a href="https://github.com/mintty/mintty/releases/tag/3.8.2">MinTTY v3.8.2</a>.</li>
+<li>The shell aliases in Git Bash that ensured that interpreters such as Python and Node.JS are executed via <code>winpty</code> are no longer necessary, and have therefore <a href="https://github.com/git-for-windows/build-extra/pull/664">been dropped</a>.</li>
+<li>Comes with the MSYS2 runtime (Git for Windows flavor) based on <a href="https://sourceware.org/pipermail/cygwin-announce/2026-March/012878.html">Cygwin v3.6.7</a>.</li>
+<li>Comes with <a href="https://curl.se/changes.html#8_19_0">cURL v8.19.0</a>.</li>
+<li>Comes with <a href="https://github.com/openssh/openssh-portable/releases/tag/V_10_3_P1">OpenSSH v10.3.P1</a>.</li>
+<li>Comes with <a href="https://www.openssl.org/news/openssl-3.5-notes.html">OpenSSL v3.5.6</a>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>The <code>iconv</code> executable, which was <a href="https://github.com/git-for-windows/git/issues/6083">inadvertently dropped</a> from Git for Windows v2.53.0's installer, <a href="https://github.com/git-for-windows/build-extra/pull/678">is now included again</a>.</li>
+<li>In some circumstances, when typing while a still-running program is about to terminate, <a href="https://github.com/git-for-windows/git/issues/5632">the typed characters could arrive out of order in Git Bash</a>. This bug <a href="https://github.com/git-for-windows/msys2-runtime/pull/124">was fixed</a>.</li>
+<li>Similar to how <code>git clean</code> already avoids traversing NTFS junctions, <code>git worktree remove</code> <a href="https://github.com/git-for-windows/git/pull/6151">now does the same</a>.</li>
+<li>The number of CPU cores is <a href="https://github.com/git-for-windows/git/pull/6108">now detected correctly</a> on multi-socket systems.</li>
+<li>When fetching/pushing via Secure Channel (the default TLS/SSL method), the timeout to renegotiate (e.g. using client certificates) was recently reduced to 7 seconds, which was too short. It has been <a href="https://github.com/git-for-windows/MINGW-packages/pull/192">extended to 60 seconds</a>.</li>
+<li>The recent security bug fix that disables NTLM by default missed the NTLM fallback in the Kerberos protocol. This fallback <a href="https://github.com/git-for-windows/MINGW-packages/pull/193">is now disabled</a>, following the cURL project's guidance.</li>
+<li>A <em>really</em> old bug which prevented Kerberos authentication from working with the default <a href="https://git-scm.com/docs/git-config#Documentation/git-config.txt-httpemptyAuth"><code>http.emptyAuth</code></a> ("auto"), <a href="https://github.com/git-for-windows/git/pull/6170">was fixed</a>.</li>
+<li>The <code>git instaweb</code> command <a href="https://github.com/git-for-windows/build-extra/pull/689">is no longer distributed with Git for Windows</a> because it would require GitWeb (which has not been distributed with Git for Windows for quite a few years).</li>
+</ul>
+
+</div><h2 id="v2.53.0(3)" data-version="v2.53.0(3)" nr="5" class="collapsible"> Changes in v2.53.0(3)<br /><small>since  v2.53.0(2) (March 10th 2026)</h2></small><div>
+
+<p>This is a security fix release, addressing CVE-2026-32631.</p>
+
+<ul>
+<li><a href="https://github.com/git-for-windows/git/security/advisories/GHSA-9j5h-h4m7-85hx">CVE-2026-32631</a>, Git for Windows: When a user clones a repository containing symbolic links pointing to network drives, Git follows those symlinks during checkout, causing Windows to transparently perform NTLM authentication and disclose the user's NTLMv2 hash to an attacker-controlled server. Since NTLM hashing is weak, the captured hash can potentially be brute-forced to recover the user's credentials. This is addressed by preventing <code>git clone</code> from following symbolic links that point to network drives during checkout.</li>
+</ul>
+
+</div><h2 id="v2.53.0(2)" data-version="v2.53.0(2)" nr="6" class="collapsible"> Changes in v2.53.0(2)<br /><small>since  v2.53.0 (February 2nd 2026)</h2></small><div>
+
+<p>This is a security fix release, addressing CVE-2025-66413.</p>
+
+<ul>
+<li><a href="https://github.com/git-for-windows/git/security/advisories/GHSA-hv9c-4jm9-jh3x">CVE-2025-66413</a>, Git for Windows: When a user clones a repository from an attacker-controlled server, Git may attempt NTLM authentication and disclose the user's NTLMv2 hash to the remote server. Since NTLM hashing is weak, the captured hash can potentially be brute-forced to recover the user's credentials. This is addressed by disabling NTLM authentication by default.</li>
+</ul>
+
+</div><h2 id="v2.53.0" data-version="v2.53.0" nr="7" class="collapsible"> Changes in v2.53.0<br /><small>since  v2.52.0 (November 17th 2025)</h2></small><div>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.53.0/Documentation/RelNotes/2.53.0.adoc">Git v2.53.0</a>.</li>
+<li>Pressing the Tab key in an empty line in Git Bash <a href="https://github.com/git-for-windows/build-extra/pull/657">no longer causes the session to "freeze"</a>.</li>
+<li>Git for Windows' installer is <a href="https://github.com/git-for-windows/build-extra/pull/660">now built by InnoSetup v6.6.1</a>.</li>
+<li>Comes with <a href="https://curl.se/changes.html#8_18_0">cURL v8.18.0</a>.</li>
+<li><a href="https://learn.microsoft.com/en-us/windows/edit/">Microsoft Edit</a> can <a href="https://github.com/git-for-windows/build-extra/pull/669">now be specified</a> as Git editor.</li>
+<li>Comes with <a href="https://github.com/git-ecosystem/git-credential-manager/releases/tag/v2.7.0">Git Credential Manager v2.7.0</a>, the "anniversary release" after one release-less year, which brings native x64 and ARM64 binaries for the respective flavors of Git for Windows.</li>
+<li><a href="https://github.com/git-for-windows/git/pull/6048">Upgrades</a> the <a href="https://microsoft.github.io/mimalloc/">memory allocator <code>mimalloc</code></a> that is used by Git for Windows to v2.2.7.</li>
+<li>Comes with the MSYS2 runtime (Git for Windows flavor) based on <a href="https://inbox.sourceware.org/cygwin-announce/20260109194027.293669-1-corinna-cygwin@cygwin.com/">Cygwin v3.6.6</a>.</li>
+<li>Comes with <a href="https://www.openssl.org/news/openssl-3.5-notes.html">OpenSSL v3.5.5</a>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>The installer of Git for Windows v2.52 <a href="https://github.com/git-for-windows/git/issues/5961">showed clipped text in some setups</a>, which was fixed.</li>
+<li>When calling Microsoft Store apps, their standard I/O is now <a href="https://github.com/git-for-windows/msys2-runtime/pull/122">set up correctly</a> (meaning: You can call an interactive Python interpreter without the <code>winpty</code> hack mentioned in the release notes' Known Issues).</li>
+<li>The <code>astextplain</code> tool (which is used by Git for Windows to generate diffs of <code>.pdf</code> and <code>.doc</code> files) used to handle empty files gracefully. This behavior is <a href="https://github.com/git-for-windows/build-extra/pull/668">now reinstated</a>.</li>
+</ul>
+
+</div><h2 id="v2.52.0" data-version="v2.52.0" nr="8" class="collapsible"> Changes in v2.52.0<br /><small>since  v2.51.2 (October 28th 2025)</h2></small><div>
+
+<p>As announced in several recent release notes, <a href="https://github.com/git-for-windows/git/issues/5405"><code>git svn</code> is no longer supported by the Git for Windows project</a>.</p>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.52.0/Documentation/RelNotes/2.52.0.adoc">Git v2.52.0</a>.</li>
+<li>Comes with <a href="https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.47">PCRE2 v10.47</a>.</li>
+<li>Comes with <a href="https://curl.se/changes.html#8_17_0">cURL v8.17.0</a>.</li>
+<li>The Git for Windows installer is <a href="https://github.com/git-for-windows/build-extra/pull/655">now built</a> with <a href="https://jrsoftware.org/files/is6-whatsnew.htm#:~:text=6.6.0">version 6.6.0</a> of InnoSetup, giving it a more modern look.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>The command <code>git help git-bash</code> was broken by a change in upstream Git v2.49.0, which <a href="https://github.com/git-for-windows/MINGW-packages/pull/171">has been fixed</a>.</li>
+</ul>
+
+</div><h2 id="v2.51.2" data-version="v2.51.2" nr="9" class="collapsible"> Changes in v2.51.2<br /><small>since  v2.51.1 (October 17th 2025)</h2></small><div>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.51.2/Documentation/RelNotes/2.51.2.adoc">Git v2.51.2</a>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>The default credential helper in the portable variant of Git for Windows (<code>credential-helper-selector</code>) <a href="https://github.com/git-for-windows/build-extra/pull/651">is now high DPI aware</a>.</li>
+</ul>
+
+</div><h2 id="v2.51.1" data-version="v2.51.1" nr="10" class="collapsible"> Changes in v2.51.1<br /><small>since  v2.51.0(2) (September 29th 2025)</h2></small><div>
+
+<p>This is a security release! Git LFS (which is enabled by default in Git for Windows) fixes <a href="https://github.com/git-lfs/git-lfs/security/advisories/GHSA-6pvw-g552-53c5">CVE-2025-26625</a> (Severity rated High, 8.6 / 10) in v3.7.1. Please only clone or pull from repositories you trust until you upgraded.</p>
+
+<p>Due to persistent maintenance challenges and the community's limited engagement and usage, <code>git svn</code> support in Git for Windows will be <a href="https://github.com/git-for-windows/git/issues/5405">dropped from the next major Git for Windows release</a>.</p>
+
+<p>Note that <code>git flow</code> is no longer shipped with Git for Windows, after a version had been distributed that had been languishing for years. Even the original, years-stale Git Flow project <a href="https://github.com/nvie/gitflow/issues/3#issuecomment-3400894835">has been archived</a>.</p>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.51.1/Documentation/RelNotes/2.51.1.adoc">Git v2.51.1</a>.</li>
+<li>Comes with <a href="https://github.com/git-lfs/git-lfs/releases/tag/v3.7.1">Git LFS v3.7.1</a>, addressing <a href="https://github.com/git-lfs/git-lfs/security/advisories/GHSA-6pvw-g552-53c5">CVE-2025-26625</a>.</li>
+<li>Comes with <a href="https://www.openssl.org/news/openssl-3.5-notes.html">OpenSSL v3.5.4</a>.</li>
+<li>Comes with the MSYS2 runtime (Git for Windows flavor) based on <a href="https://inbox.sourceware.org/cygwin-announce/d0ea504c-d683-4ed6-a47e-e866ddd37613@dronecode.org.uk/">Cygwin v3.6.5</a>.</li>
+<li>Comes with <a href="https://github.com/openssh/openssh-portable/releases/tag/V_10_2_P1">OpenSSH v10.2.P1</a>.</li>
+<li>Drops <code>git flow</code>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>A potential memory corruption in the optional <code>wincred</code> credential helper <a href="https://github.com/git-for-windows/git/pull/5856">was fixed</a>.</li>
+</ul>
+
+</div><h2 id="v2.51.0(2)" data-version="v2.51.0(2)" nr="11" class="collapsible"> Changes in v2.51.0(2)<br /><small>since  v2.51.0 (August 19th 2025)</h2></small><div>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.46">PCRE2 v10.46</a>.</li>
+<li>Comes with <a href="https://curl.se/changes.html#8_16_0">cURL v8.16.0</a>. This addresses <a href="https://github.com/git-for-windows/git/issues/5838">a bug where fetches/pushes could fail with <code>failed to read data from server: SEC_E_CONTEXT_EXPIRED (0x80090317)</code> under certain circumstances</a>. Also included: a <a href="https://github.com/git-for-windows/MINGW-packages/pull/163">back-port of a fix</a> for a bug where connection failures were mistakenly reported as time-outs.</li>
+<li>Comes with <a href="https://github.com/jonas/tig/releases/tag/tig-2.6.0">Tig v2.6.0</a>.</li>
+<li>Comes with <a href="https://github.com/mintty/mintty/releases/tag/3.8.1">MinTTY v3.8.1</a>.</li>
+<li>Comes with <a href="https://www.openssl.org/news/openssl-3.5-notes.html">OpenSSL v3.5.3</a>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+<li>The auto-updater now shows Git for Windows icon in the notification <a href="https://github.com/git-for-windows/build-extra/pull/644">also on Windows/ARM64</a>.</li>
+<li><code>git clone</code>/<code>git fetch</code> now deals more gracefully with directory / file conflicts when the files backend is used for ref storage, by failing only the ones that are involved in the conflict while allowing others. This is a regression in Git v2.51.0 that was <a href="https://github.com/git-for-windows/git/issues/5804">reported in Git for Windows</a> and independently also <a href="https://lore.kernel.org/git/YQXPR01MB3046197EF39296549EE6DD669A33A@YQXPR01MB3046.CANPRD01.PROD.OUTLOOK.COM/">to the Git mailing list</a>. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/kn/refs-files-case-insensitive"><code>kn/refs-files-case-insensitive</code></a>.</li>
+<li>Support for pathspecs in <code>diff --no-index</code> <a href="https://github.com/git-for-windows/issues/5836">was somewhat buggy</a>, which has been fixed.</li>
+<li><code>git sparse-checkout</code> subcommand learned a new <code>clean</code> action to prune otherwise unused working-tree files that are outside the areas of interest. An earlier version of this had been <a href="https://github.com/microsoft/git/pull/796">integrated into Microsoft Git already</a>. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/ds/sparse-checkout-clean"><code>ds/sparse-checkout-clean</code></a>.</li>
+<li><code>git rebase -i</code> failed to clean-up the commit log message when the command commits the final one in a chain of "fixup" commands, which has been corrected. Backported from Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/pw/rebase-i-cleanup-fix"><code>pw/rebase-i-cleanup-fix</code></a>.</li>
+<li><code>git subtree</code> did not work correctly when splitting squashed subtrees, which has been improved. Backported from Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/cs/subtree-squash-split-fix"><code>cs/subtree-squash-split-fix</code></a>.</li>
+<li>Some among <code>git add -p</code> and friends ignored <code>color.diff</code> and/or <code>color.ui</code> configuration variables, which is an old regression, which has been corrected. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/jk/add-i-color"><code>jk/add-i-color</code></a>.</li>
+<li>A corner-case bug in <code>git log -L...</code> has been corrected. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/sg/line-log-boundary-fixes"><code>sg/line-log-boundary-fixes</code></a>.</li>
+<li>A broken or malicious <code>git fetch</code> can say that it has the same object for many many times, and the upload-pack serving it can exhaust memory storing them redundantly, which has been corrected. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/ps/upload-pack-oom-protection"><code>ps/upload-pack-oom-protection</code></a>.</li>
+<li>Fixes multiple crashes around midx write-out codepaths. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/ds/midx-write-fixes"><code>ds/midx-write-fixes</code></a>.</li>
+<li><code>git repack --path-walk</code> lost objects in some corner cases, which has been corrected. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/ds/path-walk-repack-fix"><code>ds/path-walk-repack-fix</code></a>.</li>
+<li>Under a race against another process that is repacking the repository, especially a partially cloned one, <code>git fetch</code> may mistakenly think some objects we do have are missing, which has been corrected. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/jk/fetch-check-graph-objects-fix"><code>jk/fetch-check-graph-objects-fix</code></a>.</li>
+<li>Various options to <code>git diff</code> that makes comparison ignore certain aspects of the differences (like "space changes are ignored", "differences in lines that match these regular expressions are ignored") did not work well with <code>--name-only</code> and friends. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/ly/diff-name-only-with-diff-from-content"><code>ly/diff-name-only-with-diff-from-content</code></a>.</li>
+<li><code>git diff --no-index</code> run inside a subdirectory under control of a Git repository operated at the top of the working tree and stripped the prefix from the output, and oddballs like "-" (stdin) did not work correctly because of it.  Correct the set-up by undoing what the set-up sequence did to the current working directory and prefix. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/jc/diff-no-index-in-subdir"><code>jc/diff-no-index-in-subdir</code></a>.</li>
+<li>Various bugs about rename handling in "ort" merge strategy have been fixed. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/en/ort-rename-fixes"><code>en/ort-rename-fixes</code></a>.</li>
+<li><code>git push</code> had a code path that led to <code>BUG()</code> but it should have reported a regular failure, as it is a response to a usual but invalid end-user action to attempt pushing an object that does not exist. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/dl/push-missing-object-error"><code>dl/push-missing-object-error</code></a>.</li>
+<li><code>git refs migrate</code> to migrate the reflog entries from a refs  backend to another had a handful of bugs squashed. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/ps/reflog-migrate-fixes"><code>ps/reflog-migrate-fixes</code></a>.</li>
+<li>During interactive rebase, using <code>drop</code> on a merge commit lead to an error, which was incorrect. This was fixed by merging Git's topic branch <a href="https://github.com/gitgitgadget/git/commits/js/rebase-i-allow-drop-on-a-merge"><code>js/rebase-i-allow-drop-on-a-merge</code></a>.</li>
+</ul>
+
+</div><h2 id="v2.51.0" data-version="v2.51.0" nr="12" class="collapsible"> Changes in v2.51.0<br /><small>since  v2.50.1 (July 8th 2025)</h2></small><div>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.51.0/Documentation/RelNotes/2.51.0.adoc">Git v2.51.0</a>.</li>
+<li>The Portable Git installers (which are self-extracting 7-Zip archives) are now based off of <a href="https://sourceforge.net/p/sevenzip/discussion/45797/thread/da14cd780b/">7-Zip 25.01</a></li>
+<li>Comes with <a href="https://curl.se/changes.html#8_15_0">cURL v8.15.0</a>.</li>
+<li>Comes with the MSYS2 runtime (Git for Windows flavor) based on <a href="https://cygwin.com/pipermail/cygwin-announce/2025-July/012416.html">Cygwin v3.6.4</a>.</li>
+<li>Comes with <a href="https://github.com/mintty/mintty/releases/tag/3.7.9">MinTTY v3.7.9</a>.</li>
+</ul>
+
+</div><h2 id="v2.50.1" data-version="v2.50.1" nr="13" class="collapsible"> Changes in v2.50.1<br /><small>since  v2.50.0(2) (July 1st 2025)</h2></small><div>
+
+<p>This is a security fix release, addressing CVE-2024-50349, CVE-2024-52006, CVE-2025-27613, CVE-2025-27614, CVE-2025-46334, CVE-2025-46835, CVE-2025-48384, CVE-2025-48385, and CVE-2025-48386.</p>
+
+<h3 class="section-heading new-features">New Features</h3>
+
+<ul>
+<li>Comes with <a href="https://github.com/git/git/blob/v2.50.1/Documentation/RelNotes/2.50.1.adoc">Git v2.50.1</a>.</li>
+</ul>
+
+<h3 class="section-heading bug-fixes">Bug Fixes</h3>
+
+<ul>
+      <div class="empty" id="empty">No matching release-note content found.</div>
+    </div>
+  </main>
+
+  <aside class="rightbar">
+    <div class="card" style="padding:16px">
+      <div class="nav-title">Reading progress</div>
+      <div class="progress-wrap"><div class="progress" id="progress"></div></div>
+      <div class="tip" id="progressText">Start scrolling to track your review.</div>
+      <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+      <div class="nav-title">Quick actions</div>
+      <p class="tip">• Press <b>Ctrl/Cmd + K</b> to search<br>
+      • Click a version to jump there<br>
+      • Use filters to focus on changes<br>
+      • Print view is optimized for paper/PDF</p>
+    </div>
+  </aside>
+</div>
+
+<button class="icon-btn backtop" id="backtop" aria-label="Back to top">↑</button>
+</div>
+
+<script>
+const content = document.getElementById('content');
+const search = document.getElementById('search');
+const toc = document.getElementById('toc');
+const versions = [...content.querySelectorAll('h2[data-version]')];
+const newFeatureHeads = [...content.querySelectorAll('.new-features')];
+const bugFixHeads = [...content.querySelectorAll('.bug-fixes')];
+
+document.getElementById('versionCount').textContent = versions.length;
+document.getElementById('featureCount').textContent =
+  newFeatureHeads.reduce((n,h)=>n + (h.nextElementSibling?.querySelectorAll('li').length || 0),0);
+document.getElementById('fixCount').textContent =
+  bugFixHeads.reduce((n,h)=>n + (h.nextElementSibling?.querySelectorAll('li').length || 0),0);
+
+function labelFor(h) {
+  return h.textContent.replace(/Changes in |Changes in/gi,'').replace(/\s+/g,' ').trim();
+}
+versions.forEach((h,i)=>{
+  if(!h.id) h.id='version-'+i;
+  const a=document.createElement('a');
+  a.href='#'+h.id; a.textContent=labelFor(h);
+  a.dataset.target=h.id;
+  toc.appendChild(a);
+});
+
+function toggleVersion(h, collapse) {
+  let n=h.nextElementSibling;
+  while(n && !n.matches('h2')) {
+    n.style.display = collapse ? 'none' : '';
+    n=n.nextElementSibling;
+  }
+}
+document.getElementById('expandBtn').onclick=()=>versions.forEach(h=>toggleVersion(h,false));
+document.getElementById('collapseBtn').onclick=()=>versions.forEach(h=>toggleVersion(h,true));
+
+document.querySelectorAll('#toolbar button[data-filter]').forEach(btn=>btn.onclick=()=>{
+  document.querySelectorAll('#toolbar button[data-filter]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const mode=btn.dataset.filter;
+  content.querySelectorAll('h3.section-heading').forEach(h=>{
+    const show=mode==='all' || (mode==='features' && h.classList.contains('new-features')) ||
+               (mode==='fixes' && h.classList.contains('bug-fixes'));
+    h.style.display=show?'':'none';
+    if(h.nextElementSibling) h.nextElementSibling.style.display=show?'':'none';
+  });
+  versions.forEach(v=>v.style.display='');
+});
+
+let originalHTML = content.innerHTML;
+function clearHighlights(){
+  content.querySelectorAll('mark').forEach(m=>m.replaceWith(document.createTextNode(m.textContent)));
+}
+function doSearch(){
+  clearHighlights();
+  const q=search.value.trim().toLowerCase();
+  if(!q){document.getElementById('empty').style.display='none';return}
+  let matches=0;
+  content.querySelectorAll('p,li,h1,h2,h3').forEach(el=>{
+    if(el.textContent.toLowerCase().includes(q)){
+      matches++;
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+      const nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach(node=>{
+        const text=node.nodeValue, idx=text.toLowerCase().indexOf(q);
+        if(idx>=0){
+          const frag=document.createDocumentFragment();
+          frag.append(text.slice(0,idx));
+          const mark=document.createElement('mark'); mark.textContent=text.slice(idx,idx+q.length);
+          frag.append(mark,text.slice(idx+q.length)); node.replaceWith(frag);
         }
-      }
-    }
-
-    function checkStrum(currentY) {
-      const now = performance.now();
-      if (prevRightY !== null) {
-        const crossedDown = prevRightY < STRUM_LINE_Y && currentY >= STRUM_LINE_Y;
-        const crossedUp = prevRightY > STRUM_LINE_Y && currentY <= STRUM_LINE_Y;
-        const velocity = Math.abs(currentY - prevRightY);
-        if ((crossedDown || crossedUp) && velocity >= STRUM_MIN_VELOCITY && (now - lastStrumTime) > STRUM_COOLDOWN_MS) {
-          triggerStrum();
-          lastStrumTime = now;
-        }
-      }
-      prevRightY = currentY;
-    }
-
-    function triggerStrum() {
-      strumFlashUntil = performance.now() + 220;
-      if (activeChord) {
-        playChord(activeChord);
-      } else {
-        showStatus('Raise 1-4 fingers on your left hand to pick a chord first');
-      }
-    }
-
-    // ---------------------------------------------------------------------
-    // DRAWING
-    // ---------------------------------------------------------------------
-    function drawStrumLine(w, h) {
-      const y = STRUM_LINE_Y * h;
-      const now = performance.now();
-      const flashProgress = Math.max(0, (strumFlashUntil - now) / 220); // 1 -> 0 just after a strum
-      const alpha = 0.12 + flashProgress * 0.55;
-      ctx.save();
-      ctx.strokeStyle = `rgba(255,176,32,${alpha})`;
-      ctx.lineWidth = 3 + flashProgress * 9;
-      ctx.shadowColor = 'rgba(255,176,32,0.9)';
-      ctx.shadowBlur = flashProgress * 28;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    function onResults(results) {
-      const w = canvasEl.width;
-      const h = canvasEl.height;
-      if (!w || !h) return;
-
-      ctx.save();
-      ctx.clearRect(0, 0, w, h);
-      drawStrumLine(w, h);
-
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length && results.multiHandedness) {
-        let sawLeft = false;
-        let sawRight = false;
-
-        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-          const landmarks = results.multiHandLandmarks[i];
-          const mpLabel = results.multiHandedness[i].label; // 'Left' | 'Right' per MediaPipe's raw-frame convention
-          const userHand = SWAP_HANDEDNESS ? (mpLabel === 'Left' ? 'Right' : 'Left') : mpLabel;
-          const color = userHand === 'Left' ? '#a78bff' : '#ffb020';
-
-          if (window.drawConnectors && window.HAND_CONNECTIONS) {
-            window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,0.5)', lineWidth: 2 });
-          }
-          if (window.drawLandmarks) {
-            window.drawLandmarks(ctx, landmarks, { color, radius: 3, lineWidth: 1 });
-          }
-
-          if (userHand === 'Left') {
-            sawLeft = true;
-            updateChordFromFingerCount(countExtendedFingers(landmarks));
-          } else {
-            sawRight = true;
-            checkStrum(landmarks[8].y);
-          }
-        }
-
-        if (!sawLeft) { chordCandidateCount = null; chordCandidateStreak = 0; }
-        if (!sawRight) { prevRightY = null; }
-
-        hideStatus();
-      } else {
-        prevRightY = null;
-        showStatus('Show your hands to the camera');
-      }
-
-      ctx.restore();
-    }
-
-    // ---------------------------------------------------------------------
-    // STATUS MESSAGE (transient toast)
-    // ---------------------------------------------------------------------
-    let statusTimeout = null;
-    function showStatus(msg) {
-      statusEl.textContent = msg;
-      statusEl.classList.add('visible');
-      clearTimeout(statusTimeout);
-      statusTimeout = setTimeout(hideStatus, 2200);
-    }
-    function hideStatus() {
-      statusEl.classList.remove('visible');
-    }
-
-    // ---------------------------------------------------------------------
-    // MEDIAPIPE SETUP
-    // ---------------------------------------------------------------------
-    function setupHands() {
-      hands = new window.Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
       });
-      hands.setOptions({
-        maxNumHands: MAX_NUM_HANDS,
-        modelComplexity: MODEL_COMPLEXITY,
-        minDetectionConfidence: MIN_DETECTION_CONFIDENCE,
-        minTrackingConfidence: MIN_TRACKING_CONFIDENCE,
-      });
-      hands.onResults(onResults);
     }
+  });
+  document.getElementById('empty').style.display=matches?'none':'block';
+  if(matches) document.querySelector('mark')?.scrollIntoView({block:'center'});
+}
+search.addEventListener('input',doSearch);
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();search.focus()}
+  if(e.key==='Escape'){search.value='';doSearch();search.blur()}
+});
 
-    function resizeCanvasToVideo() {
-      canvasEl.width = videoEl.videoWidth || 640;
-      canvasEl.height = videoEl.videoHeight || 480;
-    }
+const themeBtn=document.getElementById('themeBtn');
+const saved=localStorage.getItem('release-theme');
+if(saved) document.documentElement.dataset.theme=saved;
+themeBtn.textContent=document.documentElement.dataset.theme==='light'?'☀':'☾';
+themeBtn.onclick=()=>{
+  const light=document.documentElement.dataset.theme!=='light';
+  document.documentElement.dataset.theme=light?'light':'dark';
+  localStorage.setItem('release-theme',light?'light':'dark');
+  themeBtn.textContent=light?'☀':'☾';
+};
+document.getElementById('printBtn').onclick=()=>window.print();
 
-    // ---------------------------------------------------------------------
-    // START / PAUSE
-    // ---------------------------------------------------------------------
-    async function handleStart() {
-      startBtn.disabled = true;
-      startBtn.textContent = 'Starting…';
-      clearStartError();
-
-      try {
-        if (!window.Hands || !window.Camera) {
-          throw Object.assign(new Error('MediaPipe library failed to load'), { name: 'MediaPipeLoadError' });
-        }
-
-        ensureAudioContext();
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        prewarmNoteBuffers();
-
-        setupHands();
-        videoEl.addEventListener('loadedmetadata', resizeCanvasToVideo, { once: true });
-
-        camera = new window.Camera(videoEl, {
-          onFrame: async () => {
-            if (processingEnabled) {
-              await hands.send({ image: videoEl });
-            }
-          },
-          width: 640,
-          height: 480,
-          facingMode: 'user',
-        });
-        await camera.start();
-
-        processingEnabled = true;
-        started = true;
-        startOverlay.style.display = 'none';
-        toggleBtn.style.display = 'inline-block';
-        toggleBtn.textContent = 'Pause';
-        toggleBtn.classList.remove('paused');
-      } catch (err) {
-        console.error('AirGuitar start failed:', err);
-        startBtn.disabled = false;
-        startBtn.textContent = 'Enable Camera & Start';
-        showStartError(err);
-      }
-    }
-
-    function clearStartError() {
-      const existing = startCard.querySelector('.start-error');
-      if (existing) existing.remove();
-    }
-
-    function showStartError(err) {
-      let msg = 'Something went wrong starting the camera. Please reload and try again.';
-      if (err && err.name === 'NotAllowedError') {
-        msg = 'Camera permission was denied. Allow camera access in your browser settings and try again.';
-      } else if (err && err.name === 'NotFoundError') {
-        msg = 'No camera was found on this device.';
-      } else if (err && err.name === 'MediaPipeLoadError') {
-        msg = 'Could not load the hand-tracking library from the CDN. Check your internet connection and reload.';
-      } else if (location.protocol === 'file:') {
-        msg = 'Browsers block camera access when a page is opened directly from disk (file://). Serve this file over http(s) — e.g. run "python3 -m http.server" in this folder and open it via http://localhost — then try again.';
-      }
-      clearStartError();
-      const p = document.createElement('p');
-      p.className = 'start-error';
-      p.textContent = msg;
-      startCard.appendChild(p);
-    }
-
-    function handleToggle() {
-      if (!started) return;
-      if (processingEnabled) {
-        processingEnabled = false;
-        if (audioCtx) audioCtx.suspend();
-        toggleBtn.textContent = 'Resume';
-        toggleBtn.classList.add('paused');
-        prevRightY = null;
-        chordCandidateCount = null;
-        chordCandidateStreak = 0;
-      } else {
-        processingEnabled = true;
-        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-        toggleBtn.textContent = 'Pause';
-        toggleBtn.classList.remove('paused');
-      }
-    }
-
-    startBtn.addEventListener('click', handleStart);
-    toggleBtn.addEventListener('click', handleToggle);
-  })();
-  </script>
+const progress=document.getElementById('progress');
+const progressText=document.getElementById('progressText');
+const readCount=document.getElementById('readCount');
+const backtop=document.getElementById('backtop');
+function updateProgress(){
+  const max=document.documentElement.scrollHeight-window.innerHeight;
+  const pct=max>0 ? Math.min(100,Math.round((window.scrollY/max)*100)) : 100;
+  progress.style.width=pct+'%'; readCount.textContent=pct+'%';
+  progressText.textContent=pct<100 ? pct+'% reviewed' : 'Release notes fully reviewed ✓';
+  backtop.classList.toggle('show',window.scrollY>500);
+  let current=versions[0];
+  for(const v of versions) if(v.getBoundingClientRect().top<=130) current=v;
+  toc.querySelectorAll('a').forEach(a=>a.classList.toggle('active',a.dataset.target===current?.id));
+}
+window.addEventListener('scroll',updateProgress,{passive:true});
+document.getElementById('backtop').onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
+updateProgress();
+</script>
 </body>
 </html>
